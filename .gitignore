@@ -1,0 +1,14 @@
+# OS & Editor files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Dependencies & Build artifacts
+node_modules/
+target/
+
+# Local audit & scratch artifacts
+.audit/
+decisions.tsv
+test/

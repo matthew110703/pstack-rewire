@@ -1,0 +1,13 @@
+### Autonomous run
+
+**You own the exit condition. Define done, then drive to it without stopping.**
+
+1. State the exit condition as a checkable predicate before the first iteration (tests green, repro fixed, all N PRs merged, pixel-diff zero).
+2. Pick the wake mechanism using Antigravity's `schedule` tool (`DurationSeconds` for a one-shot timer with `TimerCondition: "any"` or a subagent sender ID, or `CronExpression` for recurring checks; you can also recommend `/goal` to the user for unattended multi-hour sessions). An event to watch (CI, a merge, a ref advancing) gets a watcher subagent (`invoke_subagent`) or background task (`run_command`) that wakes you on the event, with a `schedule` timer heartbeat as fallback. No event gets a fixed-interval `schedule` timer sized to when the result is worth re-checking. Pick each subagent's model tier and fallback per the Subagents section.
+3. Each iteration makes the smallest change the evidence justifies, verifies it against the predicate, commits if it advanced, discards changes that didn't help. Belt-and-suspenders that "might help" gets reverted, not left to ride.
+   Sequence the work via the **sequence-verifiable-units** principle skill, verifying each unit before the next instead of batching checks at the end.
+4. Mid-run discoveries that support the goal are yours. Address broken skills, related bugs, flaky verifiers, review noise, tooling failures, orphaned follow-ups, and fixable drift yourself via poteto-mode. Put out-of-band fixes in their own PR. Do not park reversible work for the human or call `ask_question`. Surface only irreversible actions, genuine product or preference calls no experiment can settle, or a real dead end. Keep the predicate as the main drive, and return to it after each side fix.
+5. Checkpoint every iteration via the **show-me-your-work** skill, a row for what changed and whether the predicate moved.
+6. Stop when the predicate is met. A plateau is not a stop, so keep going and pivot your approach to push past it. Surface a genuine dead end rather than spinning, and never relax the predicate to declare victory. Cancel any active recurring `schedule` task via `manage_task(Action="kill", TaskId="...")` when the predicate is met.
+
+**Reply:** the exit condition, iterations run, what landed, what was discarded, final predicate state.

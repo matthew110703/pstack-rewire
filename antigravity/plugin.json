@@ -1,0 +1,18 @@
+{
+  "name": "pstack",
+  "displayName": "pstack",
+  "version": "0.15.36",
+  "description": "If you want to go fast, go deep first. pstack helps you write less, higher-quality code with rigorous agent workflows, 23 playbooks, and 24 engineering principles ported natively for Antigravity.",
+  "author": {
+    "name": "Lauren Tan (Antigravity port: matthew110703)",
+    "url": "https://github.com/matthew110703/pstack-rewire"
+  },
+  "homepage": "https://github.com/matthew110703/pstack-rewire/tree/main/antigravity",
+  "repository": "https://github.com/matthew110703/pstack-rewire",
+  "logo": "assets/logo.png",
+  "suggestedPrompts": [
+    "/poteto-mode reproduce this bug first, root-cause it with runtime evidence, then fix and verify.",
+    "/how walk me through how this subsystem works and where its boundaries live.",
+    "/setup-pstack configure my reasoning budget and dynamic model fallback tiers."
+  ]
+}
