@@ -21,7 +21,7 @@
 
 ## Zero-Clone Installation (No `git clone` Required)
 
-You can install `pstack` on any device with a single command. The installer downloads the repository archive to a temporary directory, extracts **only** the target harness folder (`antigravity` by default), installs it into your global plugin directory, and cleans up automatically.
+You can install `pstack` on any device with a single command. The installer prompts you interactively to choose between **Global** (`~/.gemini/config/plugins/pstack`) or **Workspace / Current Folder** (`.agents/plugins/pstack`), downloads the repository archive to a temporary directory, extracts **only** the target harness folder (`antigravity` by default), installs it, and cleans up automatically.
 
 ### 1. Install for Google Antigravity (Default)
 

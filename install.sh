@@ -3,11 +3,12 @@
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/matthew110703/pstack-rewire/main/install.sh | bash
 #   curl -fsSL https://raw.githubusercontent.com/matthew110703/pstack-rewire/main/install.sh | bash -s -- --target claude --scope global
+# Prompts interactively for installation scope (Global vs Workspace/Folder) unless --scope or PSTACK_SCOPE is set.
 set -euo pipefail
 
 REPO_SLUG="matthew110703/pstack-rewire"
 TARGET="${PSTACK_TARGET:-antigravity}"
-SCOPE="${PSTACK_SCOPE:-global}"
+SCOPE="${PSTACK_SCOPE:-}"
 DEST="${PSTACK_DEST:-}"
 BRANCH="${PSTACK_BRANCH:-main}"
 
@@ -30,12 +31,9 @@ done
 
 TARGET="$(printf '%s' "$TARGET" | tr '[:upper:]' '[:lower:]')"
 
-resolve_dest() {
-    if [ -n "$DEST" ]; then
-        printf '%s' "$DEST"
-        return
-    fi
-    if [ "$SCOPE" = "workspace" ]; then
+preview_dest() {
+    local sc="$1"
+    if [ "$sc" = "workspace" ]; then
         case "$TARGET" in
             antigravity) printf '%s/.agents/plugins/pstack' "$PWD" ;;
             claude)      printf '%s/.claude/plugins/pstack' "$PWD" ;;
@@ -54,7 +52,38 @@ resolve_dest() {
     esac
 }
 
-TARGET_DIR="$(resolve_dest)"
+if [ -z "$DEST" ] && [ -z "$SCOPE" ]; then
+    GLOBAL_PREVIEW="$(preview_dest global)"
+    WORKSPACE_PREVIEW="$(preview_dest workspace)"
+    CHOICE=""
+    if [ -r /dev/tty ]; then
+        printf '\nWhere would you like to install pstack (%s)?\n' "$TARGET" > /dev/tty
+        printf '  [1] Global    - All projects on this device (%s) [default]\n' "$GLOBAL_PREVIEW" > /dev/tty
+        printf '  [2] Workspace - Current folder only (%s)\n' "$WORKSPACE_PREVIEW" > /dev/tty
+        printf 'Select [1/2] (press Enter for 1): ' > /dev/tty
+        read -r CHOICE < /dev/tty || CHOICE=""
+    fi
+    CHOICE="$(printf '%s' "$CHOICE" | tr '[:upper:]' '[:lower:]')"
+    case "$CHOICE" in
+        2|workspace|folder|w) SCOPE="workspace" ;;
+        *)                    SCOPE="global" ;;
+    esac
+elif [ -z "$SCOPE" ]; then
+    SCOPE="global"
+else
+    SCOPE="$(printf '%s' "$SCOPE" | tr '[:upper:]' '[:lower:]')"
+    [ "$SCOPE" = "folder" ] && SCOPE="workspace"
+    if [ "$SCOPE" != "global" ] && [ "$SCOPE" != "workspace" ]; then
+        printf 'error: invalid --scope "%s" (expected global or workspace)\n' "$SCOPE" >&2
+        exit 2
+    fi
+fi
+
+if [ -n "$DEST" ]; then
+    TARGET_DIR="$DEST"
+else
+    TARGET_DIR="$(preview_dest "$SCOPE")"
+fi
 mkdir -p "$(dirname "$TARGET_DIR")"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" 2>/dev/null && pwd || true)"
