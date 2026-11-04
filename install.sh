@@ -1,25 +1,26 @@
 #!/usr/bin/env bash
-# Multi-harness zero-clone installer for pstack-rewire (https://github.com/matthew110703/pstack-rewire).
+# Multi-harness zero-clone installer & uninstaller for pstack-rewire (https://github.com/matthew110703/pstack-rewire).
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/matthew110703/pstack-rewire/main/install.sh | bash
-#   curl -fsSL https://raw.githubusercontent.com/matthew110703/pstack-rewire/main/install.sh | bash -s -- --target claude --scope global
-# Prompts interactively for installation scope (Global vs Workspace/Folder) unless --scope or PSTACK_SCOPE is set.
+#   curl -fsSL https://raw.githubusercontent.com/matthew110703/pstack-rewire/main/install.sh | bash -s -- --uninstall
 set -euo pipefail
 
 REPO_SLUG="matthew110703/pstack-rewire"
 TARGET="${PSTACK_TARGET:-antigravity}"
 SCOPE="${PSTACK_SCOPE:-}"
+ACTION="${PSTACK_ACTION:-}"
 DEST="${PSTACK_DEST:-}"
 BRANCH="${PSTACK_BRANCH:-main}"
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        -t|--target) TARGET="$2"; shift 2 ;;
-        -s|--scope)  SCOPE="$2"; shift 2 ;;
-        -d|--dest)   DEST="$2"; shift 2 ;;
-        -b|--branch) BRANCH="$2"; shift 2 ;;
+        -t|--target)    TARGET="$2"; shift 2 ;;
+        -s|--scope)     SCOPE="$2"; shift 2 ;;
+        -d|--dest)      DEST="$2"; shift 2 ;;
+        -b|--branch)    BRANCH="$2"; shift 2 ;;
+        -u|--uninstall) ACTION="uninstall"; shift 1 ;;
         -h|--help)
-            printf 'Usage: install.sh [--target antigravity|claude|cursor|codex|<harness>] [--scope global|workspace] [--dest <path>] [--branch <branch>]\n'
+            printf 'Usage: install.sh [--target antigravity|claude|cursor|codex|<harness>] [--scope global|workspace] [--uninstall] [--dest <path>] [--branch <branch>]\n'
             exit 0
             ;;
         *)
@@ -57,20 +58,26 @@ if [ -z "$DEST" ] && [ -z "$SCOPE" ]; then
     WORKSPACE_PREVIEW="$(preview_dest workspace)"
     CHOICE=""
     if [ -r /dev/tty ]; then
-        printf '\nWhere would you like to install pstack (%s)?\n' "$TARGET" > /dev/tty
-        printf '  [1] Global    - All projects on this device (%s) [default]\n' "$GLOBAL_PREVIEW" > /dev/tty
-        printf '  [2] Workspace - Current folder only (%s)\n' "$WORKSPACE_PREVIEW" > /dev/tty
-        printf 'Select [1/2] (press Enter for 1): ' > /dev/tty
+        printf '\npstack (%s) Setup:\n' "$TARGET" > /dev/tty
+        printf '  [1] Install / Update Global    - All projects on this device (%s) [default]\n' "$GLOBAL_PREVIEW" > /dev/tty
+        printf '  [2] Install / Update Workspace - Current folder only (%s)\n' "$WORKSPACE_PREVIEW" > /dev/tty
+        printf '  [3] Uninstall Global           - Remove from %s\n' "$GLOBAL_PREVIEW" > /dev/tty
+        printf '  [4] Uninstall Workspace        - Remove from %s\n' "$WORKSPACE_PREVIEW" > /dev/tty
+        printf 'Select [1-4] (press Enter for 1): ' > /dev/tty
         read -r CHOICE < /dev/tty || CHOICE=""
     fi
     CHOICE="$(printf '%s' "$CHOICE" | tr '[:upper:]' '[:lower:]')"
     case "$CHOICE" in
-        2|workspace|folder|w) SCOPE="workspace" ;;
-        *)                    SCOPE="global" ;;
+        2|workspace|folder|w) ACTION="install";   SCOPE="workspace" ;;
+        3|u|uninstall)        ACTION="uninstall"; SCOPE="global" ;;
+        4)                    ACTION="uninstall"; SCOPE="workspace" ;;
+        *)                    [ -z "$ACTION" ] && ACTION="install"; SCOPE="global" ;;
     esac
-elif [ -z "$SCOPE" ]; then
-    SCOPE="global"
 else
+    [ -z "$ACTION" ] && ACTION="install"
+    ACTION="$(printf '%s' "$ACTION" | tr '[:upper:]' '[:lower:]')"
+    case "$ACTION" in remove|delete|rm) ACTION="uninstall" ;; esac
+    [ -z "$SCOPE" ] && SCOPE="global"
     SCOPE="$(printf '%s' "$SCOPE" | tr '[:upper:]' '[:lower:]')"
     [ "$SCOPE" = "folder" ] && SCOPE="workspace"
     if [ "$SCOPE" != "global" ] && [ "$SCOPE" != "workspace" ]; then
@@ -84,6 +91,17 @@ if [ -n "$DEST" ]; then
 else
     TARGET_DIR="$(preview_dest "$SCOPE")"
 fi
+
+if [ "$ACTION" = "uninstall" ]; then
+    if [ -d "$TARGET_DIR" ]; then
+        rm -rf "$TARGET_DIR"
+        printf 'Uninstalled pstack (%s, %s) from %s\n' "$TARGET" "$SCOPE" "$TARGET_DIR"
+    else
+        printf 'pstack (%s, %s) is not installed at %s\n' "$TARGET" "$SCOPE" "$TARGET_DIR"
+    fi
+    exit 0
+fi
+
 mkdir -p "$(dirname "$TARGET_DIR")"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" 2>/dev/null && pwd || true)"

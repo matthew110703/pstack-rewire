@@ -68,6 +68,31 @@ curl -fsSL https://raw.githubusercontent.com/matthew110703/pstack-rewire/main/in
 
 ---
 
+### 3. Uninstall / Removal
+
+You can uninstall `pstack` interactively (using options `[3]` / `[4]` in `install.ps1` / `install.sh`, or via the dedicated `uninstall.ps1` / `uninstall.sh` scripts):
+
+**Windows (PowerShell):**
+```powershell
+# Interactive uninstaller (asks Global, Workspace, or Both):
+irm https://raw.githubusercontent.com/matthew110703/pstack-rewire/main/uninstall.ps1 | iex
+
+# Or from a local checkout:
+.\uninstall.ps1 -Target antigravity -Scope global
+.\install.ps1 -Uninstall -Scope workspace
+```
+
+**macOS / Linux:**
+```bash
+# Interactive uninstaller (asks Global, Workspace, or Both):
+curl -fsSL https://raw.githubusercontent.com/matthew110703/pstack-rewire/main/uninstall.sh | bash
+
+# Non-interactive one-liner:
+curl -fsSL https://raw.githubusercontent.com/matthew110703/pstack-rewire/main/uninstall.sh | bash -s -- --target antigravity --scope all
+```
+
+---
+
 ## Adding a Future Harness Port (e.g., `claude/`, `codex/`)
 
 This repository is designed so new agentic workflow ports drop in cleanly without breaking existing harnesses or installers:

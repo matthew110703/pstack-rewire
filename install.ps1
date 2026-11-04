@@ -1,13 +1,15 @@
 <#
 .SYNOPSIS
-Multi-harness zero-clone installer for pstack-rewire (https://github.com/matthew110703/pstack-rewire).
+Multi-harness zero-clone installer & uninstaller for pstack-rewire (https://github.com/matthew110703/pstack-rewire).
 Supports both local execution (.\install.ps1) and remote one-liner execution:
   irm https://raw.githubusercontent.com/matthew110703/pstack-rewire/main/install.ps1 | iex
-Prompts interactively for installation scope (Global vs Workspace/Folder) unless -Scope or $env:PSTACK_SCOPE is provided.
+Prompts interactively for Install/Uninstall and Global/Workspace scope unless flags or env vars are provided.
 #>
 param(
     [string]$Target = $(if ($env:PSTACK_TARGET) { $env:PSTACK_TARGET } else { "antigravity" }),
     [string]$Scope = $(if ($env:PSTACK_SCOPE) { $env:PSTACK_SCOPE } else { "" }),
+    [string]$Action = $(if ($env:PSTACK_ACTION) { $env:PSTACK_ACTION } else { "" }),
+    [switch]$Uninstall,
     [string]$Dest = $(if ($env:PSTACK_DEST) { $env:PSTACK_DEST } else { "" }),
     [string]$Branch = $(if ($env:PSTACK_BRANCH) { $env:PSTACK_BRANCH } else { "main" })
 )
@@ -15,6 +17,7 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoSlug = "matthew110703/pstack-rewire"
 $Target = $Target.ToLowerInvariant()
+if ($Uninstall) { $Action = "uninstall" }
 
 function Get-DestinationPreview([string]$harness, [string]$installScope) {
     if ($installScope -eq "workspace") {
@@ -39,20 +42,28 @@ if (-not $Dest -and -not $Scope) {
     $globalPreview = Get-DestinationPreview -harness $Target -installScope "global"
     $workspacePreview = Get-DestinationPreview -harness $Target -installScope "workspace"
     Write-Host ""
-    Write-Host "Where would you like to install pstack ($Target)?" -ForegroundColor Cyan
-    Write-Host "  [1] Global    - All projects on this device ($globalPreview) [default]"
-    Write-Host "  [2] Workspace - Current folder only ($workspacePreview)"
-    $choice = Read-Host "Select [1/2] (press Enter for 1)"
+    Write-Host "pstack ($Target) Setup:" -ForegroundColor Cyan
+    Write-Host "  [1] Install / Update Global    - All projects on this device ($globalPreview) [default]"
+    Write-Host "  [2] Install / Update Workspace - Current folder only ($workspacePreview)"
+    Write-Host "  [3] Uninstall Global           - Remove from $globalPreview"
+    Write-Host "  [4] Uninstall Workspace        - Remove from $workspacePreview"
+    $choice = Read-Host "Select [1-4] (press Enter for 1)"
     switch ($choice.Trim().ToLowerInvariant()) {
-        "2"         { $Scope = "workspace" }
-        "workspace" { $Scope = "workspace" }
-        "folder"    { $Scope = "workspace" }
-        "w"         { $Scope = "workspace" }
-        default     { $Scope = "global" }
+        "2"         { $Action = "install";   $Scope = "workspace" }
+        "workspace" { $Action = "install";   $Scope = "workspace" }
+        "folder"    { $Action = "install";   $Scope = "workspace" }
+        "w"         { $Action = "install";   $Scope = "workspace" }
+        "3"         { $Action = "uninstall"; $Scope = "global" }
+        "4"         { $Action = "uninstall"; $Scope = "workspace" }
+        "u"         { $Action = "uninstall"; $Scope = "global" }
+        "uninstall" { $Action = "uninstall"; $Scope = "global" }
+        default     { if (-not $Action) { $Action = "install" }; $Scope = "global" }
     }
-} elseif (-not $Scope) {
-    $Scope = "global"
 } else {
+    if (-not $Action) { $Action = "install" }
+    $Action = $Action.ToLowerInvariant()
+    if ($Action -in @("remove", "delete", "rm")) { $Action = "uninstall" }
+    if (-not $Scope) { $Scope = "global" }
     $Scope = $Scope.ToLowerInvariant()
     if ($Scope -eq "folder") { $Scope = "workspace" }
     if ($Scope -notin @("global", "workspace")) {
@@ -61,6 +72,17 @@ if (-not $Dest -and -not $Scope) {
 }
 
 $TargetDir = if ($Dest) { $Dest } else { Get-DestinationPreview -harness $Target -installScope $Scope }
+
+if ($Action -eq "uninstall") {
+    if (Test-Path -LiteralPath $TargetDir) {
+        Remove-Item -LiteralPath $TargetDir -Recurse -Force
+        Write-Host "Uninstalled pstack ($Target, $Scope) from $TargetDir" -ForegroundColor Yellow
+    } else {
+        Write-Host "pstack ($Target, $Scope) is not installed at $TargetDir" -ForegroundColor DarkYellow
+    }
+    exit 0
+}
+
 New-Item -ItemType Directory -Path (Split-Path -Parent $TargetDir) -Force | Out-Null
 
 $LocalSource = if ($PSScriptRoot) { Join-Path $PSScriptRoot $Target } else { $null }
