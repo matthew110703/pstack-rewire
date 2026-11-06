@@ -10,6 +10,7 @@ param(
     [string]$Scope = $(if ($env:PSTACK_SCOPE) { $env:PSTACK_SCOPE } else { "" }),
     [string]$Action = $(if ($env:PSTACK_ACTION) { $env:PSTACK_ACTION } else { "" }),
     [switch]$Uninstall,
+    [switch]$Update,
     [string]$Dest = $(if ($env:PSTACK_DEST) { $env:PSTACK_DEST } else { "" }),
     [string]$Branch = $(if ($env:PSTACK_BRANCH) { $env:PSTACK_BRANCH } else { "main" })
 )
@@ -18,12 +19,13 @@ $ErrorActionPreference = "Stop"
 $RepoSlug = "matthew110703/pstack-rewire"
 $Target = $Target.ToLowerInvariant()
 if ($Uninstall) { $Action = "uninstall" }
+if ($Update) { $Action = "install" }
 
 function Get-DestinationPreview([string]$harness, [string]$installScope) {
     if ($installScope -eq "workspace") {
         switch ($harness) {
             "antigravity" { return (Join-Path (Get-Location) ".agents\plugins\pstack") }
-            "claude"      { return (Join-Path (Get-Location) ".claude\plugins\pstack") }
+            "claude"      { return "Claude Code project scope ($(Get-Location))" }
             "cursor"      { return (Join-Path (Get-Location) ".cursor\plugins\pstack") }
             "codex"       { return (Join-Path (Get-Location) ".codex\plugins\pstack") }
             default       { return (Join-Path (Get-Location) ".$harness\plugins\pstack") }
@@ -31,7 +33,7 @@ function Get-DestinationPreview([string]$harness, [string]$installScope) {
     }
     switch ($harness) {
         "antigravity" { return (Join-Path $HOME ".gemini\config\plugins\pstack") }
-        "claude"      { return (Join-Path $HOME ".claude\plugins\pstack") }
+        "claude"      { return "Claude Code user scope" }
         "cursor"      { return (Join-Path $HOME ".cursor\plugins\pstack") }
         "codex"       { return (Join-Path $HOME ".codex\plugins\pstack") }
         default       { return (Join-Path $HOME ".$harness\plugins\pstack") }
@@ -63,12 +65,67 @@ if (-not $Dest -and -not $Scope) {
     if (-not $Action) { $Action = "install" }
     $Action = $Action.ToLowerInvariant()
     if ($Action -in @("remove", "delete", "rm")) { $Action = "uninstall" }
+    if ($Action -in @("update", "upgrade")) { $Action = "install" }
     if (-not $Scope) { $Scope = "global" }
     $Scope = $Scope.ToLowerInvariant()
     if ($Scope -eq "folder") { $Scope = "workspace" }
     if ($Scope -notin @("global", "workspace")) {
         throw "Invalid -Scope '$Scope'. Expected 'global' or 'workspace'."
     }
+}
+
+# Claude Code loads plugins only from marketplaces, so the claude target installs
+# through the `claude plugin` CLI instead of copying files.
+if ($Target -eq "claude" -and -not $Dest) {
+    $Marketplace = "pstack-rewire"
+    $PluginId = "pstack@$Marketplace"
+    $ClaudeScope = if ($Scope -eq "workspace") { "project" } else { "user" }
+    $LegacyDir = if ($Scope -eq "workspace") { Join-Path (Get-Location) ".claude\plugins\pstack" } else { Join-Path $HOME ".claude\plugins\pstack" }
+    if (Test-Path -LiteralPath $LegacyDir) {
+        Remove-Item -LiteralPath $LegacyDir -Recurse -Force
+        Write-Host "Removed legacy folder copy at $LegacyDir" -ForegroundColor Yellow
+    }
+    if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
+        Write-Host "The claude CLI was not found on PATH. In a Claude Code session, run:" -ForegroundColor DarkYellow
+        if ($Action -eq "uninstall") {
+            Write-Host "  /plugin uninstall $PluginId"
+            Write-Host "  /plugin marketplace remove $Marketplace"
+        } else {
+            Write-Host "  /plugin marketplace add $RepoSlug"
+            Write-Host "  /plugin install $PluginId"
+        }
+        exit 0
+    }
+    if ($Action -eq "uninstall") {
+        & claude plugin uninstall $PluginId --scope $ClaudeScope *> $null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Uninstalled pstack (claude, $ClaudeScope scope)" -ForegroundColor Yellow
+        } else {
+            Write-Host "pstack (claude, $ClaudeScope scope) is not installed" -ForegroundColor DarkYellow
+        }
+        # Drop this scope's marketplace declaration, and the marketplace itself once no scope still has pstack.
+        & claude plugin marketplace remove $Marketplace --scope $ClaudeScope *> $null
+        $remaining = (& claude plugin list 2>$null) -join "`n"
+        if ($remaining -notmatch [regex]::Escape($PluginId)) {
+            & claude plugin marketplace remove $Marketplace *> $null
+            if ($LASTEXITCODE -eq 0) { Write-Host "Removed marketplace $Marketplace (no pstack install remains)" -ForegroundColor Yellow }
+        }
+        exit 0
+    }
+    $Source = $RepoSlug
+    if ($PSScriptRoot -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot ".claude-plugin\marketplace.json")) -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot "claude"))) {
+        $Source = $PSScriptRoot
+    }
+    # `marketplace add` is idempotent and records the declaration in the chosen scope's settings.
+    & claude plugin marketplace add $Source --scope $ClaudeScope
+    if ($LASTEXITCODE -ne 0) { throw "claude plugin marketplace add failed" }
+    & claude plugin marketplace update $Marketplace
+    # `plugin install` is idempotent and records enabledPlugins in the chosen scope; `update` then pulls a newer version.
+    & claude plugin install $PluginId --scope $ClaudeScope
+    if ($LASTEXITCODE -ne 0) { throw "claude plugin install failed" }
+    & claude plugin update $PluginId --scope $ClaudeScope
+    Write-Host "Installed or updated pstack (claude, $ClaudeScope scope) from $Source. Restart Claude Code or run /reload-plugins, then run /pstack:poteto-help." -ForegroundColor Green
+    exit 0
 }
 
 $TargetDir = if ($Dest) { $Dest } else { Get-DestinationPreview -harness $Target -installScope $Scope }

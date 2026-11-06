@@ -19,8 +19,9 @@ while [ $# -gt 0 ]; do
         -d|--dest)      DEST="$2"; shift 2 ;;
         -b|--branch)    BRANCH="$2"; shift 2 ;;
         -u|--uninstall) ACTION="uninstall"; shift 1 ;;
+        --update)       ACTION="install"; shift 1 ;;
         -h|--help)
-            printf 'Usage: install.sh [--target antigravity|claude|cursor|codex|<harness>] [--scope global|workspace] [--uninstall] [--dest <path>] [--branch <branch>]\n'
+            printf 'Usage: install.sh [--target antigravity|claude|cursor|codex|<harness>] [--scope global|workspace] [--update|--uninstall] [--dest <path>] [--branch <branch>]\n'
             exit 0
             ;;
         *)
@@ -37,7 +38,7 @@ preview_dest() {
     if [ "$sc" = "workspace" ]; then
         case "$TARGET" in
             antigravity) printf '%s/.agents/plugins/pstack' "$PWD" ;;
-            claude)      printf '%s/.claude/plugins/pstack' "$PWD" ;;
+            claude)      printf 'Claude Code project scope (%s)' "$PWD" ;;
             cursor)      printf '%s/.cursor/plugins/pstack' "$PWD" ;;
             codex)       printf '%s/.codex/plugins/pstack' "$PWD" ;;
             *)           printf '%s/.%s/plugins/pstack' "$PWD" "$TARGET" ;;
@@ -46,7 +47,7 @@ preview_dest() {
     fi
     case "$TARGET" in
         antigravity) printf '%s/.gemini/config/plugins/pstack' "$HOME" ;;
-        claude)      printf '%s/.claude/plugins/pstack' "$HOME" ;;
+        claude)      printf 'Claude Code user scope' ;;
         cursor)      printf '%s/.cursor/plugins/pstack' "$HOME" ;;
         codex)       printf '%s/.codex/plugins/pstack' "$HOME" ;;
         *)           printf '%s/.%s/plugins/pstack' "$HOME" "$TARGET" ;;
@@ -76,7 +77,7 @@ if [ -z "$DEST" ] && [ -z "$SCOPE" ]; then
 else
     [ -z "$ACTION" ] && ACTION="install"
     ACTION="$(printf '%s' "$ACTION" | tr '[:upper:]' '[:lower:]')"
-    case "$ACTION" in remove|delete|rm) ACTION="uninstall" ;; esac
+    case "$ACTION" in remove|delete|rm) ACTION="uninstall" ;; update|upgrade) ACTION="install" ;; esac
     [ -z "$SCOPE" ] && SCOPE="global"
     SCOPE="$(printf '%s' "$SCOPE" | tr '[:upper:]' '[:lower:]')"
     [ "$SCOPE" = "folder" ] && SCOPE="workspace"
@@ -84,6 +85,55 @@ else
         printf 'error: invalid --scope "%s" (expected global or workspace)\n' "$SCOPE" >&2
         exit 2
     fi
+fi
+
+# Claude Code loads plugins only from marketplaces, so the claude target installs
+# through the `claude plugin` CLI instead of copying files.
+if [ "$TARGET" = "claude" ] && [ -z "$DEST" ]; then
+    MARKETPLACE="pstack-rewire"
+    PLUGIN_ID="pstack@${MARKETPLACE}"
+    if [ "$SCOPE" = "workspace" ]; then CLAUDE_SCOPE="project"; else CLAUDE_SCOPE="user"; fi
+    if [ "$SCOPE" = "workspace" ]; then LEGACY_DIR="$PWD/.claude/plugins/pstack"; else LEGACY_DIR="$HOME/.claude/plugins/pstack"; fi
+    if [ -d "$LEGACY_DIR" ]; then
+        rm -rf "$LEGACY_DIR"
+        printf 'Removed legacy folder copy at %s\n' "$LEGACY_DIR"
+    fi
+    if ! command -v claude >/dev/null 2>&1; then
+        printf 'The claude CLI was not found on PATH. In a Claude Code session, run:\n'
+        if [ "$ACTION" = "uninstall" ]; then
+            printf '  /plugin uninstall %s\n  /plugin marketplace remove %s\n' "$PLUGIN_ID" "$MARKETPLACE"
+        else
+            printf '  /plugin marketplace add %s\n  /plugin install %s\n' "$REPO_SLUG" "$PLUGIN_ID"
+        fi
+        exit 0
+    fi
+    if [ "$ACTION" = "uninstall" ]; then
+        if claude plugin uninstall "$PLUGIN_ID" --scope "$CLAUDE_SCOPE" >/dev/null 2>&1; then
+            printf 'Uninstalled pstack (claude, %s scope)\n' "$CLAUDE_SCOPE"
+        else
+            printf 'pstack (claude, %s scope) is not installed\n' "$CLAUDE_SCOPE"
+        fi
+        # Drop this scope's marketplace declaration, and the marketplace itself once no scope still has pstack.
+        claude plugin marketplace remove "$MARKETPLACE" --scope "$CLAUDE_SCOPE" >/dev/null 2>&1 || true
+        if ! claude plugin list 2>/dev/null | grep -q "$PLUGIN_ID"; then
+            claude plugin marketplace remove "$MARKETPLACE" >/dev/null 2>&1 && printf 'Removed marketplace %s (no pstack install remains)\n' "$MARKETPLACE"
+        fi
+        exit 0
+    fi
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" 2>/dev/null && pwd || true)"
+    if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/.claude-plugin/marketplace.json" ] && [ -d "$SCRIPT_DIR/claude" ]; then
+        SOURCE="$SCRIPT_DIR"
+    else
+        SOURCE="$REPO_SLUG"
+    fi
+    # `marketplace add` is idempotent and records the declaration in the chosen scope's settings.
+    claude plugin marketplace add "$SOURCE" --scope "$CLAUDE_SCOPE"
+    claude plugin marketplace update "$MARKETPLACE"
+    # `plugin install` is idempotent and records enabledPlugins in the chosen scope; `update` then pulls a newer version.
+    claude plugin install "$PLUGIN_ID" --scope "$CLAUDE_SCOPE"
+    claude plugin update "$PLUGIN_ID" --scope "$CLAUDE_SCOPE" || true
+    printf 'Installed or updated pstack (claude, %s scope) from %s. Restart Claude Code or run /reload-plugins, then run /pstack:poteto-help.\n' "$CLAUDE_SCOPE" "$SOURCE"
+    exit 0
 fi
 
 if [ -n "$DEST" ]; then

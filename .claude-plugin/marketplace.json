@@ -1,0 +1,26 @@
+{
+  "name": "pstack-rewire",
+  "owner": {
+    "name": "matthew110703"
+  },
+  "metadata": {
+    "description": "Multi-harness ports of pstack. This marketplace serves the native Claude Code port."
+  },
+  "plugins": [
+    {
+      "name": "pstack",
+      "source": "./claude",
+      "version": "0.15.36",
+      "description": "if you want to go fast, go deep first. pstack helps you write less, but higher quality code. rigorous agent workflows you can parallelize with confidence.",
+      "author": {
+        "name": "Lauren Tan"
+      },
+      "category": "developer-tools",
+      "tags": ["workflow", "principles", "review", "planning"],
+      "keywords": ["pstack", "poteto-mode", "workflow", "principles", "agent-style", "subagents", "unslop"],
+      "homepage": "https://github.com/matthew110703/pstack-rewire/tree/main/claude",
+      "repository": "https://github.com/matthew110703/pstack-rewire",
+      "license": "MIT"
+    }
+  ]
+}
