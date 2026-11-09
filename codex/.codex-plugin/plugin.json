@@ -1,0 +1,29 @@
+{
+  "name": "pstack",
+  "version": "0.15.36",
+  "description": "if you want to go fast, go deep first. pstack helps you write less, but higher quality code. rigorous agent workflows you can parallelize with confidence.",
+  "author": {
+    "name": "Lauren Tan"
+  },
+  "homepage": "https://github.com/matthew110703/pstack-rewire/tree/main/codex",
+  "repository": "https://github.com/matthew110703/pstack-rewire",
+  "license": "MIT",
+  "keywords": ["pstack", "poteto-mode", "workflow", "principles", "agent-style", "subagents", "unslop"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "pstack",
+    "shortDescription": "Rigorous agent workflows: 23 playbooks, 24 engineering principles, parallel subagents.",
+    "longDescription": "pstack routes each task to a playbook (bug fix, feature, refactor, perf, investigation, shipping, and more), applies engineering principles, delegates to subagents, and verifies every change against the real artifact. Start with $pstack:poteto-mode or $pstack:poteto-help.",
+    "developerName": "Lauren Tan",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Use $pstack:poteto-mode to fix this bug with a repro first",
+      "Use $pstack:how to explain how this subsystem works",
+      "Use $pstack:poteto-help to show me what pstack can do"
+    ],
+    "brandColor": "#F5C542",
+    "logo": "./assets/logo.png",
+    "composerIcon": "./assets/logo.png"
+  }
+}

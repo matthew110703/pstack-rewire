@@ -1,0 +1,6 @@
+interface:
+  display_name: "principle-attack-the-premise"
+  short_description: "Apply when two or more fixes that share one premise have failed the same gate."
+  default_prompt: "Use $pstack:principle-attack-the-premise for this task."
+policy:
+  allow_implicit_invocation: false

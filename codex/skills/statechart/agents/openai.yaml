@@ -1,0 +1,6 @@
+interface:
+  display_name: "statechart"
+  short_description: "Check a TLA+ model of a system that moves between states, such as a product flow, a protocol, or a service, and draw..."
+  default_prompt: "Use $pstack:statechart for this task."
+policy:
+  allow_implicit_invocation: false
