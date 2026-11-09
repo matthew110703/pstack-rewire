@@ -1,0 +1,6 @@
+interface:
+  display_name: "ketchup-video"
+  short_description: "Catch the user up like /ketchup, with a short subtitled video of slides for what happened and the waiting calls as..."
+  default_prompt: "Use $ketchup-video for this task."
+policy:
+  allow_implicit_invocation: false

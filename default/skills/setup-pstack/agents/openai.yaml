@@ -1,0 +1,6 @@
+interface:
+  display_name: "setup-pstack"
+  short_description: "Configure which models pstack uses per role and at what reasoning budget."
+  default_prompt: "Use $setup-pstack for this task."
+policy:
+  allow_implicit_invocation: true
