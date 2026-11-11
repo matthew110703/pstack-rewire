@@ -143,7 +143,7 @@ Start a new Codex session and type `$pstack:poteto-help` (or `$poteto-help` for 
 
 ### 4. Install for any agent (default port)
 
-[`default/`](./default) uses only open standards: [Agent Skills](https://agentskills.io) folders in `.agents/skills/`, `AGENTS.md`, and an [agent-plugins.org](https://agent-plugins.org) `plugin.json`. Codex, Gemini CLI, GitHub Copilot, Cursor, OpenCode, Amp, Goose, Junie, Roo, Windsurf, and Factory read `.agents/skills/`. The installer copies the skills there and records them in `.agents/.pstack-manifest-default`, so uninstall removes only what pstack installed. It refuses to replace a same-named skill you already have unless you pass `--force`, which backs yours up first.
+[`default/`](./default) uses only open standards: [Agent Skills](https://agentskills.io) folders in `.agents/skills/`, `AGENTS.md`, and an [agent-plugins.org](https://agent-plugins.org) `plugin.json`. Codex, Gemini CLI, GitHub Copilot, Cursor, OpenCode, Amp, Goose, Junie, Roo, Windsurf, and Factory read `.agents/skills/`. The installer copies the skills there and records them in `.agents/.pstack-manifest-default`, so uninstall removes only what pstack installed. It refuses to replace a same-named skill you already have unless you pass `--force`, which backs yours up first. Skills the skills CLI installed from this same repo (tracked in `.agents/.skill-lock.json`) are left alone while they match `default/skills`, so the two install paths don't fight; if they have drifted, they are treated like any other same-named skill.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/matthew110703/pstack-rewire/main/install.sh | bash -s -- --target default                    # ~/.agents/skills

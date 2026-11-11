@@ -18,6 +18,7 @@ BRANCH="${PSTACK_BRANCH:-main}"
 FORCE="${PSTACK_FORCE:-}"
 YES="${PSTACK_YES:-}"
 LIST=""
+FLAT_NOOP=""
 
 HARNESSES="claude codex antigravity cursor default"
 
@@ -304,24 +305,68 @@ resolve_repo_root() {
 
 manifest_skills() { [ -f "$1" ] && sed -n 's/^skill=//p' "$1" || true; }
 
+# True when the skills-CLI lock file next to the skills folder ($1) attributes
+# skill $2 to this repo, i.e. the skills CLI installed it and owns its updates.
+lock_same_repo() {
+    local lock name="$2"
+    lock="$(dirname "$1")/.skill-lock.json"
+    [ -f "$lock" ] || return 1
+    if on_path jq; then
+        jq -e --arg n "$name" --arg s "$REPO_SLUG" '.skills[$n].source == $s' "$lock" >/dev/null 2>&1
+    else
+        awk -v entry="\"$name\":" -v source="\"source\": \"$REPO_SLUG\"" '
+            index($0, entry) && /\{/ { inblock = 1 }
+            inblock && index($0, source) { found = 1 }
+            inblock && /^    \}/ { inblock = 0 }
+            END { exit !found }' "$lock" 2>/dev/null
+    fi
+}
+
+# True when the folder trees $1 and $2 have identical contents.
+trees_identical() { diff -qr "$1" "$2" >/dev/null 2>&1; }
+
 # Copies every skill folder from $1 into $2, tracking ownership in manifest $3.
 # A same-named skill that pstack did not install aborts the copy unless --force,
-# which first backs it up next to the skills folder.
+# which first backs it up next to the skills folder. Exception: skills the
+# skills CLI installed from this same repo (per .skill-lock.json) are left
+# untouched while they match the repo copy, so the CLI keeps managing them.
 flat_install() {
     local src="$1" dest="$2" manifest="$3" label="$4"
+    FLAT_NOOP=""
     mkdir -p "$dest"
-    local owned collisions="" name
+    local owned collisions="" cli_managed="" name total=0 current=0
     owned="$(manifest_skills "$manifest")"
     for dir in "$src"/*/; do
         name="$(basename "$dir")"
+        total=$((total + 1))
         if [ -e "$dest/$name" ] && ! printf '%s\n' "$owned" | grep -qx "$name"; then
-            collisions="$collisions $name"
+            if lock_same_repo "$dest" "$name"; then
+                if trees_identical "$src/$name" "$dest/$name"; then
+                    current=$((current + 1))
+                else
+                    collisions="$collisions $name"
+                    cli_managed="$cli_managed $name"
+                fi
+            else
+                collisions="$collisions $name"
+            fi
         fi
     done
+    # Every skill is already present, installed by the skills CLI from this
+    # same repo, and identical to the repo copy: leave it (and its lock file) alone.
+    if [ "$total" -gt 0 ] && [ "$current" -eq "$total" ]; then
+        FLAT_NOOP=1
+        printf 'pstack: all %d skills are already installed and current via the skills CLI; nothing to do.\n' "$total"
+        return 0
+    fi
     if [ -n "$collisions" ]; then
         if [ -z "$FORCE" ]; then
             printf 'error: these skills already exist in %s and were not installed by pstack:%s\n' "$dest" "$collisions" >&2
-            printf 'Rerun with --force to back them up and replace them.\n' >&2
+            if [ -n "$cli_managed" ]; then
+                printf 'Some of these are managed by the skills CLI but differ from this repo; update them with the skills CLI, or rerun with --force to have pstack take over (backs them up).\n' >&2
+            else
+                printf 'Rerun with --force to back them up and replace them.\n' >&2
+            fi
             exit 1
         fi
         local backup
@@ -486,7 +531,9 @@ run_codex() {
         flat_install "$REPO_ROOT/codex/skills" "$PWD/.agents/skills" "$PWD/.agents/.pstack-manifest-codex" codex
         install_codex_agents "$REPO_ROOT/codex/agents" "$PWD/.codex/agents"
         offer_max_depth "$PWD/.codex/config.toml" "$PWD/.codex/.pstack-install"
-        printf 'Installed pstack (codex, workspace) -> %s/.agents/skills. Trust this project in Codex, then type $poteto-help.\n' "$PWD"
+        if [ "$FLAT_NOOP" != "1" ]; then
+            printf 'Installed pstack (codex, workspace) -> %s/.agents/skills. Trust this project in Codex, then type $poteto-help.\n' "$PWD"
+        fi
         return 0
     fi
     if ! on_path codex; then
@@ -540,6 +587,7 @@ run_default() {
         return 0
     fi
     flat_install "$REPO_ROOT/default/skills" "$base/.agents/skills" "$base/.agents/.pstack-manifest-default" default
+    if [ "$FLAT_NOOP" = "1" ]; then return 0; fi
     if [ -d "$HOME/.codex/plugins/cache/pstack-rewire-codex/pstack" ]; then
         printf 'Note: the pstack Codex plugin is also installed, so Codex will list both pstack:<name> and <name> skills.\n'
     fi

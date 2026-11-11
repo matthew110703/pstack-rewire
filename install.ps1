@@ -232,15 +232,67 @@ function Get-ManifestSkills([string]$manifest) {
     return @(Get-Content -LiteralPath $manifest | Where-Object { $_ -like "skill=*" } | ForEach-Object { $_.Substring(6) })
 }
 
+# True when the skills-CLI lock file next to the skills folder attributes $name to this repo,
+# i.e. the skills CLI installed it and owns its updates.
+function Test-LockOwned([string]$dest, [string]$name) {
+    $lock = Join-Path (Split-Path -Parent $dest) ".skill-lock.json"
+    if (-not (Test-Path -LiteralPath $lock)) { return $false }
+    try {
+        $entry = (Get-Content -Raw -LiteralPath $lock | ConvertFrom-Json).skills.$name
+        return ($null -ne $entry -and $entry.source -eq $RepoSlug)
+    } catch { return $false }
+}
+
+function Get-TreeSignature([string]$root) {
+    Get-ChildItem -LiteralPath $root -Recurse -File | ForEach-Object {
+        [PSCustomObject]@{
+            Path = $_.FullName.Substring($root.Length).TrimStart('\', '/')
+            Hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+        }
+    }
+}
+
+# True when the folder trees $a and $b have identical contents.
+function Test-TreesIdentical([string]$a, [string]$b) {
+    $diff = @(Compare-Object (Get-TreeSignature $a) (Get-TreeSignature $b) -Property Path, Hash)
+    return ($diff.Count -eq 0)
+}
+
 # Copies every skill folder from $src into $dest, tracking ownership in $manifest.
 # A same-named skill pstack did not install aborts unless -Force, which backs it up first.
+# Exception: skills the skills CLI installed from this same repo (per .skill-lock.json)
+# are left untouched while they match the repo copy, so the CLI keeps managing them.
 function Install-FlatSkills([string]$src, [string]$dest, [string]$manifest, [string]$label) {
+    $script:FlatNoop = $false
     New-Item -ItemType Directory -Path $dest -Force | Out-Null
     $owned = Get-ManifestSkills $manifest
     $names = @(Get-ChildItem -LiteralPath $src -Directory | Select-Object -ExpandProperty Name)
-    $collisions = @($names | Where-Object { (Test-Path -LiteralPath (Join-Path $dest $_)) -and ($owned -notcontains $_) })
+    $collisions = @()
+    $cliManaged = @()
+    $current = 0
+    foreach ($n in $names) {
+        if ((Test-Path -LiteralPath (Join-Path $dest $n)) -and ($owned -notcontains $n)) {
+            if (Test-LockOwned $dest $n) {
+                if (Test-TreesIdentical (Join-Path $src $n) (Join-Path $dest $n)) { $current++ }
+                else { $collisions += $n; $cliManaged += $n }
+            } else { $collisions += $n }
+        }
+    }
+    # Every skill is already present, installed by the skills CLI from this same repo,
+    # and identical to the repo copy: leave it (and its lock file) alone.
+    if ($names.Count -gt 0 -and $current -eq $names.Count) {
+        $script:FlatNoop = $true
+        Write-Host "pstack: all $($names.Count) skills are already installed and current via the skills CLI; nothing to do."
+        return
+    }
     if ($collisions.Count -gt 0) {
-        if (-not $Force) { throw "These skills already exist in $dest and were not installed by pstack: $($collisions -join ', '). Rerun with -Force to back them up and replace them." }
+        $list = $collisions -join ', '
+        if (-not $Force) {
+            if ($cliManaged.Count -gt 0) {
+                throw "These skills already exist in $dest and were not installed by pstack: $list. Some of these are managed by the skills CLI but differ from this repo; update them with the skills CLI, or rerun with -Force to have pstack take over (backs them up)."
+            }
+            throw "These skills already exist in $dest and were not installed by pstack: $list. Rerun with -Force to back them up and replace them."
+        }
         $backup = Join-Path (Split-Path -Parent $dest) ".pstack-backup-$(Get-Date -Format yyyyMMddHHmmss)"
         New-Item -ItemType Directory -Path $backup -Force | Out-Null
         foreach ($n in $collisions) { Move-Item -LiteralPath (Join-Path $dest $n) -Destination (Join-Path $backup $n) }
@@ -374,7 +426,9 @@ function Invoke-Codex([string]$act, [string]$sc) {
         Install-FlatSkills (Join-Path $script:RepoRoot "codex\skills") (Join-Path $Ws ".agents\skills") (Join-Path $Ws ".agents\.pstack-manifest-codex") "codex"
         Install-CodexAgents (Join-Path $script:RepoRoot "codex\agents") (Join-Path $Ws ".codex\agents")
         Set-CodexMaxDepth (Join-Path $Ws ".codex\config.toml") (Join-Path $Ws ".codex\.pstack-install")
-        Write-Host "Installed pstack (codex, workspace) -> $(Join-Path $Ws '.agents\skills'). Trust this project in Codex, then type `$poteto-help." -ForegroundColor Green
+        if (-not $script:FlatNoop) {
+            Write-Host "Installed pstack (codex, workspace) -> $(Join-Path $Ws '.agents\skills'). Trust this project in Codex, then type `$poteto-help." -ForegroundColor Green
+        }
         return
     }
     if (-not (Test-OnPath codex)) {
@@ -415,6 +469,7 @@ function Invoke-Default([string]$act, [string]$sc) {
         return
     }
     Install-FlatSkills (Join-Path $script:RepoRoot "default\skills") (Join-Path $base ".agents\skills") $manifest "default"
+    if ($script:FlatNoop) { return }
     if (Test-Path -LiteralPath (Join-Path $HOME ".codex\plugins\cache\pstack-rewire-codex\pstack")) { Write-Host "Note: the pstack Codex plugin is also installed, so Codex will list both pstack:<name> and <name> skills." -ForegroundColor DarkYellow }
     Write-Host "Installed or updated pstack (default, $sc) -> $(Join-Path $base '.agents\skills'). Start a new agent session and ask for the poteto-help skill." -ForegroundColor Green
 }
