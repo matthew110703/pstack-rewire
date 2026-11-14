@@ -27,7 +27,7 @@ Skip Phase A only when the work is genuinely greenfield with no surrounding syst
 
 Run the **arena** skill with the design-sketch task and the Phase A grounding artifacts. Pass `references/runner-prompt.md` as each runner's prompt.
 
-Take the runners from the `architect runners` line in `.agents/rules/pstack-models.md` or `~/.gemini/config/pstack-models.md`, in place of the `arena runners` line. If the rule or that line is missing, use `pro -> inherit, flash` (resolving dynamic fallback chains per the **arena** skill's Phase A, and assigning distinct structural priors when multiple runners resolve to the same model tier).
+Take the runners from the `architect runners` line in `.agents/rules/pstack-models.md` or `~/.gemini/config/pstack-models.md`, in place of the `arena runners` line. If the rule or that line is missing, use `pro -> inherit -> flash, flash -> inherit -> flash_lite` (resolving multi-hop fallback chains automatically per the **arena** skill's Phase A, assigning distinct structural priors when multiple runners resolve to the same model tier, or pinning cross-family models via native `swarm` with `swarm{action: "models", all: true}` quota checks and `@swarm panel-seat-1`/`panel-seat-2` fallbacks). You can run Phase B via `invoke_subagent` waves, a `run_workflow` Candidates + Cross-Judge pipeline, or a native `swarm` board.
 
 Design it twice. Require at least two structurally distinct candidates before synthesis, even when the first looks sufficient. This is the **principle-exhaust-the-design-space** skill made concrete. Whole-shape alternatives, not point fixes inside one shape.
 

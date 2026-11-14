@@ -25,14 +25,14 @@ Run:
 /setup-pstack
 ```
 
-[`/setup-pstack`](../../skills/setup-pstack/SKILL.md) checks your subagent model tiers (`pro`, `inherit`, `flash`, `flash_lite`), asks for a reasoning budget via `ask_question`, shows you each role (code delegates, judgment, the review panels), and asks what you want. Answer the questions. It writes `.agents/rules/pstack-models.md` (or `~/.gemini/config/pstack-models.md`), a rule every pstack skill reads.
+[`/setup-pstack`](../../skills/setup-pstack/SKILL.md) inspects both Antigravity's subagent tiers (`pro`, `inherit`, `flash`, `flash_lite`) and your live concrete model roster and quotas via `swarm{action: "models", all: true}` (`Orchestrator (Argon)`, `Gemini 4 Argon`, `Gemini 4 Hydrogen`, `Gemini 3.8 Flash`, `Claude Opus/Sonnet 5.5`, `GPT-OSS 120B`), asks for a reasoning budget via `ask_question`, shows you each role (code delegates, judgment, the review panels), and writes `.agents/rules/pstack-models.md` (or `~/.gemini/config/pstack-models.md`).
 
-Because `pro` models may be unavailable in your current Antigravity setup and the parent model (`inherit`, e.g., Gemini 4 Argon) is rate-limited, pstack uses **dynamic fallback chains** (`pro -> inherit -> flash`):
-- `large` (default) puts high-fanout/code workers on `flash` to conserve parent quota, and puts judgment/synthesis/hardest tasks on `pro -> inherit -> flash`.
-- `unlimited` puts primary code and judgment roles on `pro -> inherit -> flash`.
-- `medium` and `small` shift more roles to `flash` and `flash_lite` to spend even less quota.
+Because any model tier or concrete slug can be unavailable or quota-limited, pstack enforces **multi-hop fallback chains** on every role so spawns never fail:
+- `large` (default) puts code/workers on `flash -> inherit -> flash_lite`, explorers/tooling on `flash -> flash_lite -> inherit`, and judgment/synthesis/hardest tasks on `pro -> inherit -> flash -> flash_lite`.
+- `unlimited` puts primary code and judgment roles on `pro -> inherit -> flash -> flash_lite`.
+- `medium` and `small` shift more roles to `flash` and `flash_lite -> flash -> inherit` to spend even less quota.
 
-You only override what you care about. A role with no line in the rule keeps the skill's default. To restore a default, delete that role's line. For a panel role (`arena runners`, `architect runners`, `interrogate reviewers`) the value is a comma-separated list, and one subagent runs per entry, so the list length sets the panel size. When multiple runners resolve to the same model tier, pstack assigns distinct structural priors or adversarial lenses to each runner. Setup also configures `swarm workers`, the default model for every `/swarm` worker unless a race names a model for each arm.
+You only override what you care about. A role with no line in the rule keeps the skill's default. To restore a default, delete that role's line. For a panel role (`arena runners`, `architect runners`, `interrogate reviewers`) the value is a comma-separated list, and one subagent runs per entry, so the list length sets the panel size. When multiple runners collapse onto the same tier after fallback, pstack assigns distinct structural priors or adversarial lenses to each runner—or uses `@swarm` concrete fallback chains (`gemini-4-argon-high`, `claude-opus-5-5-high`, `gemini-4-hydrogen-xhigh`, `claude-sonnet-5-5-high`, `gpt-oss-120b-medium`) for cross-family diversity. Setup also configures `swarm workers`, the default model for every `/swarm` worker unless a race names a model for each arm.
 
 ## Accept the verification offers, or don't
 

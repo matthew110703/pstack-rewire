@@ -7,7 +7,7 @@ description: "Use for \"how does X work\", code walkthroughs before changing som
 
 Explore the codebase to answer "how does X work?" questions. Produce architectural explanations at the level of a senior engineer onboarding onto a subsystem, enough to build a working mental model, not so much that it reads like annotated source code.
 
-Every spawn uses `invoke_subagent` with `TypeName: "research"` (or `TypeName: "poteto-explorer"` with `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false` when running inside a nested custom subagent where built-in `"research"` is restricted; never pass `Name: "research"` to `define_subagent`). Explorers use the `how explorer` line in `.agents/rules/pstack-models.md` or `~/.gemini/config/pstack-models.md` (default `flash`), and every explainer uses the `how explainer` line (default `pro -> inherit -> flash`). Resolve fallback chains dynamically: if `pro` is unavailable in the environment, use `inherit` (parent model, e.g., Argon), or `flash` when conserving parent quota. Pick each subagent's `Model` for the job, per the Subagents section of the **poteto-mode** skill. After calling `invoke_subagent`, immediately end your turn and wait for reactive wakeup (never poll with `schedule` or `manage_subagents`).
+Every spawn uses `invoke_subagent` with `TypeName: "research"` (or `TypeName: "poteto-explorer"` with `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false` when running inside a nested custom subagent where built-in `"research"` is restricted; never pass `Name: "research"` to `define_subagent`), or a single two-phase `run_workflow` script (`phase("Explore")` with `parallel(...)` -> `phase("Synthesize")` with `agent(...)`) for complex subsystems. Explorers use the `how explorer` line in `.agents/rules/pstack-models.md` or `~/.gemini/config/pstack-models.md` (default `flash -> flash_lite -> inherit`), and every explainer uses the `how explainer` line (default `pro -> inherit -> flash -> flash_lite`). Resolve fallback chains automatically: if any tier is unavailable, rejected, or quota-limited, advance to the next hop in its chain (inside `run_workflow` under `Orchestrator (Argon)`, skip `"inherit"` and resolve `"pro" -> "flash" -> "flash_lite"` directly, passing paths relative to `WORKSPACES[0]`). Pick each subagent's `Model` for the job, per the Subagents section of the **poteto-mode** skill. After calling `invoke_subagent` or `run_workflow`, immediately end your turn and wait for reactive wakeup (never poll with `schedule` or `manage_subagents`).
 
 ## 1. Assess complexity
 
@@ -20,11 +20,13 @@ When in doubt, take the simple path.
 
 ## 2. Explore (complex only)
 
-Decompose the question into 2 to 4 angles, each a distinct slice of the subsystem. Spawn all explorers in a single turn via `invoke_subagent` (`TypeName: "research"`, `Model: "flash"`), each with `references/explorer-prompt.md` and its angle filled in. End your turn and wait for their reactive wakeup notifications.
+Decompose the question into 2 to 4 angles, each a distinct slice of the subsystem. Choose one execution path:
+- **`invoke_subagent` wave**: Spawn all explorers in a single turn via `invoke_subagent` (`TypeName: "research"`, `Model` from `how explorer`: `flash -> flash_lite -> inherit`), each with `references/explorer-prompt.md` and its angle filled in. End your turn and wait for their reactive wakeup notifications.
+- **`run_workflow` two-phase pipeline** (recommended when avoiding a manual relay turn): Call `run_workflow` with `phase("Explore")` running `parallel(angles, lambda a: agent(..., type_name="research", model="flash", schema={"type": "string"}))` (falling back to `"flash_lite"` or, outside Orchestrator, `"inherit"` if `"flash"` is unavailable) followed immediately by `phase("Synthesize")` running the explainer `agent(...)` (skip `"inherit"` under `Orchestrator (Argon)` — use `"pro"` -> `"flash"` -> `"flash_lite"`, passing paths relative to `WORKSPACES[0]`), then jump to step 4 when the workflow completes.
 
 ## 3. Synthesize (complex only)
 
-Once all explorers have returned, spawn one explainer via `invoke_subagent` (`TypeName: "research"`, `Model` from `how explainer`: `pro -> inherit -> flash`) with `references/explainer-prompt.md` and every explorer's findings filled in.
+Once all explorers have returned (if using `invoke_subagent`), spawn one explainer via `invoke_subagent` (`TypeName: "research"`, `Model` from `how explainer`: `pro -> inherit -> flash -> flash_lite`) with `references/explainer-prompt.md` and every explorer's findings filled in.
 
 ## 4. Present
 

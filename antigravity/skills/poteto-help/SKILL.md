@@ -23,7 +23,7 @@ Infer the need from the message and the conversation. A named situation, such as
 
 Check the state that changes the answer, and mention it only when it does:
 
-- No `.agents/rules/pstack-models.md` or `~/.gemini/config/pstack-models.md` means `/setup-pstack` hasn't run for this user, so every role uses its default dynamic model routing (`flash` for code/workers, `pro -> inherit -> flash` for judgment/synthesis).
+- No `.agents/rules/pstack-models.md` or `~/.gemini/config/pstack-models.md` means `/setup-pstack` hasn't run for this user, so every role uses its default multi-hop fallback routing (`flash -> inherit -> flash_lite` for code/workers, `flash -> flash_lite -> inherit` for explorers, `pro -> inherit -> flash -> flash_lite` for judgment/synthesis).
 - No `.agents/skills/verify-*/` skill or other app harness in the project means agents have no scripted way to drive the app. Mention `/create-verification-skill` when the question is about proving a change works.
 - No formal verification skill in the project means no property is checked past what tests reach. Mention `/create-formal-verification-skill` when the question is about a race, an invariant, or another case tests rarely hit. When one exists and the code it covers changed after the commit it records as last in sync, mention `/maintain-formal-verification-skill` if the question touches that code.
 
@@ -35,12 +35,12 @@ When the model rule is missing and it matters, ask whether the user wants to pic
 ## Get set up
 
 1. Install the pstack Antigravity plugin (or link `antigravity/skills`, `antigravity/rules`, and `antigravity/agents` into `.agents/` or `~/.gemini/config/`).
-2. Run [`/setup-pstack`](../setup-pstack/SKILL.md). It asks for a reasoning budget via `ask_question`, maps a model/fallback chain (`pro -> inherit -> flash`, `flash`, `flash_lite`) to each role, and writes `.agents/rules/pstack-models.md` (or `~/.gemini/config/pstack-models.md`). Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.
+2. Run [`/setup-pstack`](../setup-pstack/SKILL.md). It inspects live models and quotas via `swarm{action: "models", all: true}` (`Orchestrator (Argon)`, `Gemini 4 Argon`, `Gemini 4 Hydrogen`, `Gemini 3.8 Flash`, `Claude Opus/Sonnet 5.5`, `GPT-OSS 120B`), asks for a reasoning budget via `ask_question`, maps a multi-hop fallback chain (`pro -> inherit -> flash -> flash_lite`, `flash -> inherit -> flash_lite`, `flash -> flash_lite -> inherit`) and optional `@swarm` concrete chains to each role, and writes `.agents/rules/pstack-models.md` (or `~/.gemini/config/pstack-models.md`). Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.
 3. Start a real task with `/poteto-mode`, a goal, and a check that can pass or fail.
 
 The [README](../../README.md), [Antigravity harness guide](../../docs/harness/antigravity.md), and [guide page 1](../../docs/guide/01-setup.md) have the details. Offer to word their first prompt with them, per [`references/prompting.md`](references/prompting.md).
 
-If quota or cost is the worry, say where the tokens go and how to spend fewer. pstack spends extra tokens on subagents and review panels (`arena`, `architect`, `interrogate`, `swarm`). Because `pro` models may be unavailable and parent `inherit` (e.g., Argon) quota is limited, pstack defaults high-fanout/code workers to `flash` and dynamically falls back `pro -> inherit -> flash` on judgment/synthesis roles. Rerun `/setup-pstack` and pick `medium` or `small` to shift even more roles to `flash` and `flash_lite`. Save `/poteto-mode` for work that needs rigor.
+If quota or cost is the worry, say where the tokens go and how to spend fewer. pstack spends extra tokens on subagents and review panels (`arena`, `architect`, `interrogate`, `swarm`). Because `pro` models may be unavailable and parent `Orchestrator` / `Argon` quota is limited, pstack defaults high-fanout/code workers to `flash -> inherit -> flash_lite` and falls back through `pro -> inherit -> flash -> flash_lite` on judgment/synthesis roles. Rerun `/setup-pstack` and pick `medium` or `small` to shift even more roles to `flash` and `flash_lite`. Save `/poteto-mode` for work that needs rigor.
 
 ## Start a task with `/poteto-mode`
 
@@ -49,7 +49,7 @@ If quota or cost is the worry, say where the tokens go and how to spend fewer. p
 In Antigravity:
 - Typing `/poteto-mode` invokes the skill for the task.
 - Mid-chat, "new task" makes the mode match a fresh playbook.
-- `/poteto-mode` uses `invoke_subagent` (`TypeName: "self"`, `TypeName: "research"`, or `TypeName: "poteto-agent"` via `define_subagent`) for the subagents its playbook steps spawn.
+- `/poteto-mode` spans `Orchestrator (Argon)` planning turns (`exit_plan_mode`) and `Gemini 4 Hydrogen` execution turns, dispatching subagents and pipelines through `invoke_subagent`, `run_workflow`, or native `swarm`.
 
 ## Pick a skill
 
@@ -105,7 +105,8 @@ Close calls:
 
 Antigravity native integrations used by pstack:
 
-- `chrome-devtools-mcp` and `.agents/skills/verify-<app>/` drive UI verification; `run_command` and `manage_task` drive CLI verification.
+- `.agents/skills/verify-<app>/`, the built-in `browser` subagent (`TypeName: "browser"`, `Model: "flash"`, `BROWSER_HOST_FACTS`), and `chrome-devtools-mcp` drive UI verification; `run_command` and `manage_task` drive CLI verification.
+- `run_workflow` (Python `phase`, `parallel`, `pipeline`, `trajectory`; skip `model="inherit"` when parent is `Orchestrator (Argon)`) and native `swarm` (`workspace: "share"`, `#channel`, `swarm_monitor`, live `swarm{action: "models", all: true}` quota inspection) power multi-stage pipelines and cross-family multi-model panels; writable code delegates use `define_subagent`-backed `poteto-coder` (`EnableWriteTools: true`) or `TypeName: "self"`.
 - The `schedule` tool (`DurationSeconds` or `CronExpression`) and `/schedule` or `/goal` slash commands power recurring loops and autonomous runs.
 - The built-in `agy-customizations` and `automation` skills author new skills and sidecar automations.
 - pstack has no standalone `/orchestrate` skill. Orchestrate is a `/poteto-mode` playbook.
@@ -132,7 +133,7 @@ Principles are one-rule skills that `/poteto-mode` reads and cites in its replie
 | Symptom | Fix |
 |---|---|
 | A question got treated as the next step of the last task | Say "new task", or say the turn doesn't need the mode. |
-| Runs hit parent (`inherit` / Argon) quota limits | Run `/setup-pstack` and pick `large`, `medium`, or `small` so high-fanout roles use `flash` / `flash_lite` and judgment roles fall back dynamically (`pro -> inherit -> flash`). |
+| Runs hit parent (`inherit` / Argon) quota limits or a model fails | Run `/setup-pstack` and pick `large`, `medium`, or `small` so roles resolve through multi-hop fallback chains (`flash -> inherit -> flash_lite`, `pro -> inherit -> flash -> flash_lite`) and hot-swap `swarm` workers via `swarm{action: "model"}`. |
 | A skill didn't load on its own | Invoke it explicitly with `/<skill-name>` or start with `/poteto-mode`. |
 | Parallel agents overwrote each other | Give each subagent its own isolated worktree via `invoke_subagent` with `Workspace: "share"` or `"branch"`. |
 | An overnight run moved but finished nothing | `schedule` / `/goal` needs a falsifiable check that can pass or fail, not a duration. See [guide page 7](../../docs/guide/07-overnight.md). |

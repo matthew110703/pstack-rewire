@@ -1,6 +1,6 @@
 ---
 name: poteto-agent
-description: Delegate subagent for code-writing, playbook-owner, and helper tasks spawned during a `/poteto-mode` run. Spawn a fresh `poteto-agent` for each new task via `invoke_subagent`, and message an existing one via `send_message` only in the strict cases that poteto-mode's Subagents section names. Reads the `poteto-mode` skill's `SKILL.md` in full before any work, including its inline Principles index.
+description: Advisory prompt and delegate instructions for `/poteto-mode` runs. Note: Antigravity preloads plugin `agents/*.md` as read-only (`EnableWriteTools: false`), so for code-writing or shell tasks define `Name: "poteto-coder"` via `define_subagent` with `EnableWriteTools: true` and this prompt, or spawn `TypeName: "self"` reading this file and `skills/poteto-mode/SKILL.md`.
 ---
 
 # Poteto subagent

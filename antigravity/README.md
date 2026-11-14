@@ -8,7 +8,7 @@ there's a growing sense that ai writes too much slop code. i agree. i don't want
 
 **pstack gives you fearless parallelism.** when you can go deep on one agent and trust it to write good, verifiable code, you can truly parallelize with confidence. start multiple agents up with `poteto-mode` and trust that they'll apply rigorous engineering principles to their work.
 
-**dynamic model routing gives you resilience and efficiency.** every model tier has its strengths and quota limits. pstack routes high-fanout and code workers to `flash` by default to conserve parent (`inherit` / Argon) quota, and uses a dynamic fallback chain (`pro -> inherit -> flash`) for judgment, synthesis, and the hardest tasks. when multi-agent panels (`arena`, `architect`, `interrogate`) resolve to the same model tier, pstack assigns distinct structural priors and adversarial lenses to each runner.
+**dynamic model routing with multi-hop fallbacks gives you resilience and efficiency.** every model family and quota pool has its strengths. pstack routes high-fanout and code workers to `flash -> inherit -> flash_lite` (or `flash -> flash_lite -> inherit`) to conserve parent (`Orchestrator (Argon)` / `Gemini 4 Argon`) quota, and routes judgment, synthesis, and the hardest tasks through `pro -> inherit -> flash -> flash_lite` so no spawn fails if any model is unavailable or out of quota. when multi-agent panels (`arena`, `architect`, `interrogate`) collapse onto one tier, pstack assigns distinct structural priors and adversarial lenses—or pins cross-family models (`gemini-4-argon-high`, `claude-opus-5-5-high`, `gemini-4-hydrogen-xhigh`, `claude-sonnet-5-5-high`, `gemini-3.8-flash-high`, `gpt-oss-120b-medium`) via native `swarm`.
 
 fork it. improve it. make it yours. PRs are welcome! 
 
@@ -37,7 +37,7 @@ two steps:
 
 new here? the [pstack guide](./docs/guide/README.md) walks you through a first real task, from setup and prompting through verification and overnight runs. stuck, or unsure which skill fits? ask [`/poteto-help`](./skills/poteto-help/SKILL.md).
 
-that's it. the other skills are situational, and the mode skill uses them for you as needed. out of the box the mode splits work by model tier: code delegates (feature, refactoring, bug fix, perf, hillclimb) and high-fanout workers go to `flash`, while the hardest changes, prose, and judgment use `pro -> inherit -> flash`. the default panel is `pro -> inherit, flash`. [`/setup-pstack`](./skills/setup-pstack/SKILL.md) changes any of it.
+that's it. the other skills are situational, and the mode skill uses them for you as needed. out of the box the mode splits work across all three Antigravity execution engines (`invoke_subagent`, `run_workflow`, and native `swarm`) and integrates with `Orchestrator (Argon)`'s Plan → Execute loop (`exit_plan_mode`): code delegates and high-fanout workers use `flash -> inherit -> flash_lite`, while the hardest changes, prose, and judgment use `pro -> inherit -> flash -> flash_lite`. the default panel is `pro -> inherit -> flash, flash -> inherit -> flash_lite`. [`/setup-pstack`](./skills/setup-pstack/SKILL.md) inspects live quotas via `swarm{action: "models", all: true}` and changes any of it.
 
 ## usage
 
@@ -200,11 +200,11 @@ help:              /poteto-help which skill should i use to review this branch?
 
 ## the `poteto-agent` and Comment Sicko subagents
 
-[`/poteto-mode`](./skills/poteto-mode/SKILL.md) runs in the chat that receives it. that chat owns the playbook, the todo list, and every subagent spawn via `invoke_subagent`.
+[`/poteto-mode`](./skills/poteto-mode/SKILL.md) runs in the chat that receives it. that chat owns the playbook, the todo list, and every `invoke_subagent`, `run_workflow`, or native `swarm` dispatch (including seamlessly bridging `Orchestrator (Argon)` planning turns and `Gemini 4 Hydrogen` execution turns via `exit_plan_mode`).
 
-pstack also ships [`poteto-agent`](./agents/poteto-agent.md) as the wrapper for delegates spawned during a run (`invoke_subagent` with `TypeName: "poteto-agent"` or `TypeName: "self"` reading `agents/poteto-agent.md`). it reads `poteto-mode` in full, including its inline principles index, before doing any work. do not spawn `poteto-agent` to run the playbook itself.
+pstack also ships [`poteto-agent`](./agents/poteto-agent.md) as the delegate persona for `/poteto-mode` runs. Because Antigravity mounts plugin `agents/*.md` as read-only (`EnableWriteTools: false`), writable code/verification delegates use `TypeName: "poteto-coder"` (registered via `define_subagent(..., EnableWriteTools: true, EnableMCPTools: true, EnableSubagentTools: true)` with `agents/poteto-agent.md`) or `TypeName: "self"` reading `agents/poteto-agent.md` and `skills/poteto-mode/SKILL.md` before doing any work. Do not spawn a delegate to run the playbook itself.
 
-pstack also ships [Comment Sicko](./agents/comment-sicko.md), a comment reviewer available as `TypeName: "comment-sicko"` (registered via `define_subagent` if not preloaded). usually invoke it through [`/no-comments`](./skills/no-comments/SKILL.md), not directly.
+pstack also ships [Comment Sicko](./agents/comment-sicko.md), a comment reviewer preloaded as read-only `comment-sicko` (for [`/no-comments`](./skills/no-comments/SKILL.md) file edits, register writable `TypeName: "comment-sicko-writer"` via `define_subagent(..., EnableWriteTools: true)` or invoke `TypeName: "self"` reading `agents/comment-sicko.md`). usually invoke it through [`/no-comments`](./skills/no-comments/SKILL.md), not directly.
 
 ## principles
 
@@ -244,7 +244,7 @@ twenty-four short skills, one principle each. `poteto-mode` indexes them inline 
 
 ## native Antigravity integrations
 
-- **UI and CLI verification:** `poteto-mode` uses `.agents/skills/verify-<app>/SKILL.md` (generated by `/create-verification-skill`), `chrome-devtools-mcp` for web/Electron UIs, and `run_command` / `manage_task` for CLIs and services.
+- **UI and CLI verification:** `poteto-mode` uses `.agents/skills/verify-<app>/SKILL.md` (generated by `/create-verification-skill`), Antigravity's built-in `browser` subagent (`TypeName: "browser"`, `Model: "flash"`, verified against `BROWSER_HOST_FACTS`), `chrome-devtools-mcp` for web/Electron UIs, and `run_command` / `manage_task` for CLIs and services.
 - **Diff cleanup:** `opening-a-pr.md` inlines the code-slop cleanup pass and pairs it with [`/unslop`](./skills/unslop/SKILL.md) and [`/no-comments`](./skills/no-comments/SKILL.md).
 - **Skill authoring:** [`/reflect`](./skills/reflect/SKILL.md), [`/automate-me`](./skills/automate-me/SKILL.md), and `authoring-a-skill.md` pair with Antigravity's built-in `agy-customizations` skill.
 
@@ -258,7 +258,7 @@ Antigravity already has `/plan` and `/grill-me`, which work great with pstack. p
 
 type [`/automate-me`](./skills/automate-me/SKILL.md). it mines your recent `<appDataDir>/brain/` transcripts, drafts a `<your-name>-mode` skill from how you've actually worked, and routes through pstack underneath. you keep pstack as the base and end up with your own routing skill alongside `poteto-mode`.
 
-models are configurable too. type [`/setup-pstack`](./skills/setup-pstack/SKILL.md). it writes `.agents/rules/pstack-models.md` or `~/.gemini/config/pstack-models.md` mapping each role to a model or fallback chain (`pro -> inherit -> flash`, `flash`, `flash_lite`). every skill reads it and falls back to sensible defaults when the rule is absent.
+models are configurable too. type [`/setup-pstack`](./skills/setup-pstack/SKILL.md). it inspects live model availability and quotas (`swarm{action: "models", all: true}`) and writes `.agents/rules/pstack-models.md` or `~/.gemini/config/pstack-models.md` mapping each role to a multi-hop fallback chain (`pro -> inherit -> flash -> flash_lite`, `flash -> inherit -> flash_lite`, `flash -> flash_lite -> inherit`) plus optional `@swarm` concrete cross-family chains. every skill reads it and falls back cleanly if any model is unavailable.
 
 ## automations
 

@@ -104,7 +104,7 @@ A long chat accumulates context from the last task. When you change subjects, sa
 
 ## Give parallel work its own isolated worktree
 
-If you run several agents against one repository on one computer, they will fight over the working tree, the ports, and the build output. In Antigravity, subagents spawned with `invoke_subagent` can pass `Workspace: "share"` (git-worktree-style shared repository isolation) or `Workspace: "branch"` (cloned/branched workspace isolation) so each worker gets its own isolated working directory without touching your main checkout.
+If you run several agents against one repository on one computer, they will fight over the working tree, the ports, and the build output. In Antigravity, subagents spawned with `invoke_subagent`, workflow agents in `run_workflow`, and workers in native `swarm` can pass `Workspace: "share"` (git-worktree-style shared repository isolation) or `Workspace: "branch"` (cloned/branched workspace isolation) so each worker gets its own isolated working directory without touching your main checkout. Under **Orchestrator (Argon)**, planning turns ground read-only first, hand execution to **Gemini 4 Hydrogen** via `exit_plan_mode`, and verify outputs at `[plan review]`.
 
 When you want an explicit git worktree up front, ask for one:
 

@@ -13,23 +13,25 @@ Invoke when the user says "reflect" or "/reflect". Skip when the conversation is
 
 Before fanning out, locate this conversation's transcript at `<appDataDir>/brain/<conversation-id>/.system_generated/logs/transcript.jsonl` (or `transcript_full.jsonl` when `truncated_fields` is present; the system prompt names both `<appDataDir>` and `<conversation-id>`). Do not scan across unrelated conversations in `<appDataDir>/brain/` unless asked. If the file is unavailable, pass a tight digest of the session instead.
 
-## 2. Spawn three reviewers in parallel
+## 2. Spawn three reviewers in parallel (or run as a `run_workflow` pipeline)
 
-One turn, three `invoke_subagent` calls with `TypeName: "self"` (so reviewers retain MCP access to look up the tickets, chat threads, and observability traces the transcript references; `TypeName: "research"` strips MCP access).
+Choose one execution path:
+- **`invoke_subagent` wave**: One turn, three `invoke_subagent` calls with `TypeName: "self"` (so reviewers retain MCP access to look up the tickets, chat threads, and observability traces the transcript references; `TypeName: "research"` strips MCP access).
+- **`run_workflow` pipeline** (recommended for complex sessions): Run one `run_workflow` script that can inspect recent steps/errors directly via `await trajectory(...)`, run `phase("Review")` with `parallel` across the three lenses (`type_name="self"`), and feed all three outputs straight into `phase("Synthesize")` with `agent(...)` and tier fallback if any `model` tier is unavailable (under `Orchestrator (Argon)`, skip `"inherit"` inside `run_workflow` `agent(model=...)` and resolve `"pro" -> "flash" -> "flash_lite"`, passing paths relative to `WORKSPACES[0]`).
 
-Each reviewer and the synthesizer name a role line in `.agents/rules/pstack-models.md` or `~/.gemini/config/pstack-models.md` and a default. Resolve dynamic fallback chains (`pro -> inherit -> flash`): if `pro` is unavailable, fall back to `inherit` (parent model, e.g., Argon) or `flash` when conserving parent quota. Pick each subagent's `Model` for the job, per the Subagents section of the **poteto-mode** skill.
+Each reviewer and the synthesizer name a role line in `.agents/rules/pstack-models.md` or `~/.gemini/config/pstack-models.md` and a default. Resolve multi-hop fallback chains automatically (`pro -> inherit -> flash -> flash_lite` for judgment/divergent/synthesizer; `flash -> flash_lite -> inherit` for tooling): if any tier is unavailable, rejected, or out of quota, advance immediately to the next hop in its chain. Pick each subagent's `Model` for the job, per the Subagents section of the **poteto-mode** skill.
 
 | Lens | Role line | Default `Model` | Prompt template |
 |---|---|---|---|
-| Judgment | `reflect judgment, divergent, synthesizer` | `pro -> inherit -> flash` | `references/judgment-reviewer.md` |
-| Tooling | `reflect tooling` | `flash` | `references/tooling-reviewer.md` |
-| Divergent | `reflect judgment, divergent, synthesizer` | `pro -> inherit -> flash` | `references/divergent-reviewer.md` |
+| Judgment | `reflect judgment, divergent, synthesizer` | `pro -> inherit -> flash -> flash_lite` | `references/judgment-reviewer.md` |
+| Tooling | `reflect tooling` | `flash -> flash_lite -> inherit` | `references/tooling-reviewer.md` |
+| Divergent | `reflect judgment, divergent, synthesizer` | `pro -> inherit -> flash -> flash_lite` | `references/divergent-reviewer.md` |
 
 Pass each template verbatim, substituting the transcript path or digest where marked. End your turn and wait for their reactive wakeup notifications.
 
 ## 3. Synthesize
 
-One `invoke_subagent` call, `TypeName: "self"`, `Model` from the `reflect judgment, divergent, synthesizer` line (default `pro -> inherit -> flash`). It spot-verifies citations through MCP. Pass `references/synthesizer.md` verbatim, with each reviewer's full output inlined where marked. It returns an Accepted / Rejected / Backlog list.
+One `invoke_subagent` call, `TypeName: "self"`, `Model` from the `reflect judgment, divergent, synthesizer` line (default `pro -> inherit -> flash -> flash_lite`)—or `phase("Synthesize")` inside Step 2's `run_workflow`. It spot-verifies citations through MCP. Pass `references/synthesizer.md` verbatim, with each reviewer's full output inlined where marked. It returns an Accepted / Rejected / Backlog list.
 
 ## 4. Structural enforcement check
 
